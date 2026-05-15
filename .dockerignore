@@ -1,0 +1,51 @@
+# Version control
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+
+# Virtual environment — never copy into the image
+attendance_env/
+venv/
+.venv/
+
+# Secrets — must NEVER be in the Docker image
+.env
+secret.key
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local database — runtime data, not source code
+attendance.db
+attendance_backup_before_migration.db
+*.sqbpro
+
+# Export files
+*.csv
+*.xlsx
+
+# Logs
+*.log
+startup_error.log
+
+# Documentation build artefacts
+docs/_build/

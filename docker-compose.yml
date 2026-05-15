@@ -1,0 +1,85 @@
+# =============================================================================
+# AI Face Attendance System — Docker Compose
+# =============================================================================
+# Services:
+#   api       — FastAPI backend (port 8000)
+#   dashboard — Streamlit analytics dashboard (port 8501)
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in values.
+#   2. docker-compose up --build
+#   3. API:       http://localhost:8000
+#      API Docs:  http://localhost:8000/docs
+#      Dashboard: http://localhost:8501
+#
+# Production notes:
+#   - Mount a named volume for the SQLite database so data persists across
+#     container restarts.
+#   - Set ATTENDANCE_FERNET_KEY and ATTENDANCE_JWT_SECRET to strong random
+#     values in .env (never use defaults in production).
+#   - Add a reverse proxy (nginx/Caddy) in front for TLS termination.
+# =============================================================================
+
+version: "3.9"
+
+services:
+
+  # ---- FastAPI backend ------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: attendance-system:latest
+    container_name: attendance_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist the SQLite database outside the container
+      - attendance_data:/app/data
+    environment:
+      - ATTENDANCE_DB_PATH=/app/data/attendance.db
+      - ATTENDANCE_FERNET_KEY=${ATTENDANCE_FERNET_KEY}
+      - ATTENDANCE_JWT_SECRET=${ATTENDANCE_JWT_SECRET}
+      - ATTENDANCE_TOKEN_EXPIRE_MINUTES=${ATTENDANCE_TOKEN_EXPIRE_MINUTES:-60}
+      - ATTENDANCE_SMTP_HOST=${ATTENDANCE_SMTP_HOST:-}
+      - ATTENDANCE_SMTP_PORT=${ATTENDANCE_SMTP_PORT:-587}
+      - ATTENDANCE_SMTP_USER=${ATTENDANCE_SMTP_USER:-}
+      - ATTENDANCE_SMTP_PASS=${ATTENDANCE_SMTP_PASS:-}
+      - ATTENDANCE_EMAIL_FROM=${ATTENDANCE_EMAIL_FROM:-}
+      - ATTENDANCE_CORS_ORIGINS=http://localhost:8501,http://dashboard:8501
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    command: >
+      python -m uvicorn api.main:app
+      --host 0.0.0.0 --port 8000
+      --workers 1 --log-level info
+
+  # ---- Streamlit dashboard --------------------------------------------------
+  dashboard:
+    image: attendance-system:latest
+    container_name: attendance_dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000/api/v1
+    depends_on:
+      api:
+        condition: service_healthy
+    command: >
+      python -m streamlit run dashboard/streamlit_app.py
+      --server.port 8501
+      --server.address 0.0.0.0
+      --server.headless true
+      --browser.gatherUsageStats false
+
+volumes:
+  attendance_data:
+    driver: local

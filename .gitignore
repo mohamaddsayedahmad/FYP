@@ -1,0 +1,49 @@
+# Secrets — must never enter version control
+.env
+secret.key
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.Python
+
+# Virtual environment
+attendance_env/
+venv/
+.venv/
+env/
+
+# Database (runtime data, not source)
+attendance.db
+attendance_backup_before_migration.db
+*.sqbpro
+
+# Exports / reports
+*.csv
+*.xlsx
+
+# Logs
+*.log
+startup_error.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code local config
+.claude/
