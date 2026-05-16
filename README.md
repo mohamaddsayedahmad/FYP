@@ -38,6 +38,7 @@ An end-to-end face recognition attendance system that automates student attendan
 | RBAC | Admin / Teacher / Student roles enforced at every API endpoint |
 | Notifications | Absence email via SMTP with deduplication and audit logging |
 | Analytics | Streamlit dashboard with KPI cards, trend charts, export |
+| Teacher registration | Admin-only page: register teacher accounts with name, email, and password |
 | Evaluation | Accuracy, Precision, Recall, F1, FAR, FRR, EER, d-prime, ROC |
 
 ---
@@ -264,6 +265,25 @@ All subsequent requests require:
 Authorization: Bearer <access_token>
 ```
 
+### Permissions Matrix
+
+| Action | Admin | Teacher | Student |
+|--------|-------|---------|---------|
+| Login / obtain JWT | ✓ | ✓ | ✓ |
+| View all courses | ✓ | ✗ | ✗ |
+| View own assigned courses | — | ✓ | ✗ |
+| Create a course | ✓ | ✗ | ✗ |
+| Enroll a student in a course | ✓ | ✓ (own courses) | ✗ |
+| Register a student (face images) | ✓ | ✗ | ✗ |
+| Register a teacher account | ✓ | ✗ | ✗ |
+| View all attendance records | ✓ | ✗ | ✗ |
+| View own-course attendance records | ✓ | ✓ | ✗ |
+| Finalize a session (anti-proxy) | ✓ | ✓ (own courses) | ✗ |
+| Send absence notifications | ✓ | ✓ (own courses) | ✗ |
+| View own student list | — | ✓ | ✗ |
+| View own KPI summary | — | ✓ | ✗ |
+| View global KPI summary | ✓ | ✗ | ✗ |
+
 ### Key Endpoints
 
 | Method | Endpoint | Role | Description |
@@ -273,6 +293,10 @@ Authorization: Bearer <access_token>
 | `POST` | `/api/v1/users/register` | admin, teacher | Register student with face images |
 | `GET` | `/api/v1/courses/` | all | List courses |
 | `POST` | `/api/v1/courses/` | admin | Create course |
+| `POST` | `/api/v1/admin/register-teacher` | admin | Register a new teacher account with course assignments |
+| `GET` | `/api/v1/teachers/me/courses` | teacher | Courses assigned to the calling teacher |
+| `GET` | `/api/v1/teachers/me/students` | teacher | Distinct students across all teacher's courses |
+| `GET` | `/api/v1/teachers/me/summary` | teacher | KPI summary (courses, students, today, this week) |
 | `POST` | `/api/v1/courses/enroll` | admin, teacher | Enroll student in course |
 | `GET` | `/api/v1/attendance/` | all | List attendance records |
 | `POST` | `/api/v1/attendance/sign-in/{course}/{uid}` | admin, teacher | Manual sign-in |

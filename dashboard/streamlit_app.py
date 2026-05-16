@@ -1,20 +1,14 @@
 """
-Professional Streamlit analytics dashboard.
+AI Face Attendance System — Streamlit analytics dashboard.
 
-Architecture:
-- Communicates with the FastAPI backend via authenticated HTTP requests.
-- JWT token stored in st.session_state (not in URL or cookies).
-- All data fetching is cached with st.cache_data (TTL = 60 s) so the
-  dashboard remains responsive without hammering the API.
+Role-aware design:
+  Admin  — global view, all sidebar items, system-wide KPIs.
+  Teacher — scoped view, "My X" sidebar items, data limited to their courses.
+  Student — not supported in this dashboard (handled by API only).
 
-Dashboard sections:
-1. Login — obtain JWT token
-2. Overview — KPI cards (total students, courses, today's attendance rate)
-3. Attendance Trends — line chart of daily attendance rate per course
-4. Per-Student View — table + heatmap calendar
-5. Course Management — create courses, enroll students
-6. Admin Panel — account management (admin only)
-7. Data Export — CSV / Excel download
+All data fetching goes through the FastAPI backend using the caller's JWT.
+The teacher-scoped endpoints (/teachers/me/*) enforce data isolation
+server-side — the dashboard never passes a teacher_id as a query parameter.
 """
 
 from __future__ import annotations
@@ -29,12 +23,17 @@ import streamlit as st
 
 API = os.getenv("API_URL", "http://127.0.0.1:8000/api/v1")
 
+# Role constants — never hard-code "admin"/"teacher" strings in render paths.
+ROLE_ADMIN = "admin"
+ROLE_TEACHER = "teacher"
+
 st.set_page_config(
     page_title="AI Attendance System",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # ---- Session state helpers -------------------------------------------------
 
@@ -69,6 +68,23 @@ def _fetch_courses(_token):
     return data if ok else []
 
 @st.cache_data(ttl=60, show_spinner=False)
+def _fetch_my_courses(_token):
+    """Teacher-scoped: returns only courses assigned to the calling teacher."""
+    ok, data = _api("get", "/teachers/me/courses")
+    return data if ok else []
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _fetch_my_students(_token):
+    """Teacher-scoped: distinct students in the calling teacher's courses."""
+    ok, data = _api("get", "/teachers/me/students")
+    return data if ok else []
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _fetch_teacher_summary(_token):
+    ok, data = _api("get", "/teachers/me/summary")
+    return data if ok else {}
+
+@st.cache_data(ttl=60, show_spinner=False)
 def _fetch_users(_token):
     ok, data = _api("get", "/users/")
     return data if ok else []
@@ -93,7 +109,7 @@ def _login_page():
 
     col1, col2 = st.columns([1, 2])
     with col1:
-        role = st.selectbox("Role", ["admin", "teacher", "student"])
+        role = st.selectbox("Role", [ROLE_ADMIN, ROLE_TEACHER, "student"])
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
 
@@ -119,7 +135,7 @@ def _login_page():
         )
 
 
-# ---- KPI cards helper -------------------------------------------------------
+# ---- KPI card helper -------------------------------------------------------
 
 def _kpi_card(label: str, value: str, delta: Optional[str] = None, color: str = "#3B82F6"):
     delta_html = f"<p style='font-size:0.8rem;color:#6B7280;margin:0'>{delta}</p>" if delta else ""
@@ -135,9 +151,12 @@ def _kpi_card(label: str, value: str, delta: Optional[str] = None, color: str = 
     )
 
 
-# ---- Overview section -------------------------------------------------------
+# ============================================================================
+# ADMIN pages (unchanged from original)
+# ============================================================================
 
 def _overview():
+    """Admin overview — global KPIs."""
     st.header("📊 Overview")
     courses = _fetch_courses(_token())
     users = _fetch_users(_token())
@@ -192,7 +211,6 @@ def _attendance_trend_chart(records: list):
 
     st.line_chart(daily.set_index("date")[["attendance_rate"]], height=300)
 
-    # Summary table
     with st.expander("Show daily breakdown"):
         daily["date"] = daily["date"].dt.strftime("%Y-%m-%d")
         daily["attendance_rate"] = daily["attendance_rate"].round(1).astype(str) + "%"
@@ -202,83 +220,8 @@ def _attendance_trend_chart(records: list):
         }), use_container_width=True)
 
 
-# ---- Attendance section -----------------------------------------------------
-
-def _attendance_section():
-    st.header("📋 Attendance Records")
-    courses = _fetch_courses(_token())
-    if not courses:
-        st.warning("No courses found.")
-        return
-
-    course_options = {f"{c['code']} — {c['name']}": c["id"] for c in courses}
-    selected_label = st.selectbox("Filter by course", ["All courses"] + list(course_options))
-    selected_id = course_options.get(selected_label) if selected_label != "All courses" else None
-
-    records = _fetch_attendance(_token(), selected_id)
-    if not records:
-        st.info("No attendance records.")
-        return
-
-    df = pd.DataFrame(records)
-    df = df.rename(columns={
-        "student_uid": "Student ID", "course_id": "Course ID",
-        "date": "Date", "sign_in_time": "Sign In", "sign_out_time": "Sign Out",
-        "duration_minutes": "Duration (min)", "status": "Status",
-    })
-
-    # Colour-code status
-    def _style_status(val):
-        if val == "Present":
-            return "background-color: #D1FAE5; color: #065F46"
-        if val == "Absent":
-            return "background-color: #FEE2E2; color: #991B1B"
-        return ""
-
-    styled = df.style.applymap(_style_status, subset=["Status"])
-    st.dataframe(styled, use_container_width=True, height=400)
-
-    if selected_id:
-        _render_stats(selected_id)
-
-    # Export
-    st.markdown("---")
-    c1, c2 = st.columns(2)
-    with c1:
-        csv = df.to_csv(index=False)
-        st.download_button("⬇ Download CSV", csv, "attendance.csv", "text/csv",
-                           use_container_width=True)
-    with c2:
-        import io
-        buf = io.BytesIO()
-        df.to_excel(buf, index=False, engine="openpyxl")
-        st.download_button("⬇ Download Excel", buf.getvalue(),
-                           "attendance.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           use_container_width=True)
-
-
-def _render_stats(course_id: int):
-    stats = _fetch_stats(_token(), course_id)
-    if not stats:
-        return
-
-    st.subheader("📊 Course Statistics")
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        _kpi_card("Attendance Rate", f"{stats.get('attendance_rate', 0):.1f}%",
-                  color="#3B82F6")
-    with c2:
-        _kpi_card("Present", str(stats.get("present", 0)), color="#10B981")
-    with c3:
-        _kpi_card("Absent", str(stats.get("absent", 0)), color="#EF4444")
-    with c4:
-        _kpi_card("Unique Students", str(stats.get("unique_students", 0)), color="#8B5CF6")
-
-
-# ---- Course management ------------------------------------------------------
-
 def _courses_section():
+    """Admin courses page — create courses, enroll students, view all."""
     st.header("🎓 Course Management")
     tab1, tab2, tab3 = st.tabs(["All Courses", "Create Course", "Enroll Student"])
 
@@ -290,7 +233,7 @@ def _courses_section():
             st.info("No courses yet.")
 
     with tab2:
-        if _role() not in ("admin",):
+        if _role() != ROLE_ADMIN:
             st.warning("Only admins can create courses.")
         else:
             with st.form("create_course"):
@@ -330,12 +273,12 @@ def _courses_section():
                         st.error(f"Failed: {data}")
 
 
-# ---- Registration -----------------------------------------------------------
-
 def _registration_section():
+    """Admin: register a student with face images."""
     st.header("👤 Register Student")
-    if _role() not in ("admin", "teacher"):
-        st.warning("Only admins and teachers can register students.")
+
+    if _role() != ROLE_ADMIN:
+        st.error("Access denied — registering students requires the admin role.")
         return
 
     with st.form("register"):
@@ -361,11 +304,99 @@ def _registration_section():
                     st.error(f"Failed: {data}")
 
 
-# ---- Notifications ----------------------------------------------------------
+def _register_teacher_section():
+    """Admin: create a teacher account and assign courses."""
+    st.header("👨‍🏫 Register Teacher")
+
+    if _role() != ROLE_ADMIN:
+        st.error("Access denied — this page requires the admin role.")
+        return
+
+    courses = _fetch_courses(_token())
+    course_options = {f"{c['code']} — {c['name']}": c["id"] for c in courses}
+
+    with st.form("register_teacher", clear_on_submit=True):
+        username = st.text_input("Username", help="Unique login name, no spaces")
+        name = st.text_input("Full Name")
+        email = st.text_input("Email")
+
+        col_pw, col_confirm = st.columns(2)
+        with col_pw:
+            password = st.text_input("Password", type="password",
+                                     help="Minimum 8 characters")
+        with col_confirm:
+            confirm = st.text_input("Confirm Password", type="password")
+
+        st.markdown("**Assign Courses**")
+        if course_options:
+            selected_course_labels = st.multiselect(
+                "Select courses to assign to this teacher",
+                options=list(course_options.keys()),
+                help="The teacher will be able to take attendance for these courses.",
+            )
+        else:
+            st.info("No courses exist yet. Create courses first, then assign them here.")
+            selected_course_labels = []
+
+        submitted = st.form_submit_button("Register Teacher", use_container_width=True)
+
+    if not submitted:
+        return
+
+    username = username.strip()
+    name = name.strip()
+    email = email.strip()
+    selected_course_ids = [course_options[lbl] for lbl in selected_course_labels]
+
+    errors = []
+    if not username:
+        errors.append("Username is required.")
+    elif " " in username:
+        errors.append("Username must not contain spaces.")
+    if not name:
+        errors.append("Full name is required.")
+    if not email or "@" not in email or "." not in email.split("@")[-1]:
+        errors.append("A valid email address is required.")
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters.")
+    if password != confirm:
+        errors.append("Passwords do not match.")
+
+    if errors:
+        for e in errors:
+            st.error(e)
+        return
+
+    ok, data = _api("post", "/admin/register-teacher", json={
+        "username": username,
+        "name": name,
+        "email": email,
+        "password": password,
+        "course_ids": selected_course_ids,
+    })
+
+    if ok:
+        assigned = data.get("courses_assigned", 0)
+        course_msg = f" Assigned to **{assigned}** course(s)." if assigned else ""
+        st.success(
+            f"Teacher registered successfully: "
+            f"**{data.get('name')}** (username: `{data.get('username')}`)."
+            f"{course_msg}"
+        )
+    else:
+        st.error(f"Registration failed: {data}")
+
 
 def _notifications_section():
+    """Admin/teacher: send absence notifications, finalize sessions."""
     st.header("📧 Absence Notifications")
-    courses = _fetch_courses(_token())
+
+    # Teachers see only their own courses; admins see all.
+    if _role() == ROLE_TEACHER:
+        courses = _fetch_my_courses(_token())
+    else:
+        courses = _fetch_courses(_token())
+
     if not courses:
         st.warning("No courses found.")
         return
@@ -405,12 +436,257 @@ def _notifications_section():
                 st.error(f"Failed: {data}")
 
 
-# ---- Main app layout --------------------------------------------------------
+def _attendance_section(preselect_course_id: Optional[int] = None):
+    """
+    Attendance records page.
+
+    For admins: all courses in filter; all records shown.
+    For teachers: only their assigned courses in filter; records are
+    already scoped server-side by the JWT.
+
+    preselect_course_id: when navigated from "Take Attendance" the caller
+    may pass a specific course to pre-select (unused by default — teacher
+    will see "All my courses" which is already scoped).
+    """
+    st.header("📋 Attendance Records")
+
+    if _role() == ROLE_TEACHER:
+        courses = _fetch_my_courses(_token())
+        all_label = "All my courses"
+    else:
+        courses = _fetch_courses(_token())
+        all_label = "All courses"
+
+    if not courses:
+        st.warning("No courses found.")
+        return
+
+    course_options = {f"{c['code']} — {c['name']}": c["id"] for c in courses}
+
+    # Build filter options; pre-select if a course was requested
+    filter_options = [all_label] + list(course_options)
+    default_idx = 0
+    if preselect_course_id is not None:
+        for i, label in enumerate(filter_options):
+            if label != all_label and course_options.get(label) == preselect_course_id:
+                default_idx = i
+                break
+
+    selected_label = st.selectbox(
+        "Filter by course", filter_options, index=default_idx
+    )
+    selected_id = course_options.get(selected_label) if selected_label != all_label else None
+
+    records = _fetch_attendance(_token(), selected_id)
+    if not records:
+        st.info("No attendance records.")
+        return
+
+    df = pd.DataFrame(records)
+    df = df.rename(columns={
+        "student_uid": "Student ID", "course_id": "Course ID",
+        "date": "Date", "sign_in_time": "Sign In", "sign_out_time": "Sign Out",
+        "duration_minutes": "Duration (min)", "status": "Status",
+    })
+
+    def _style_status(val):
+        if val == "Present":
+            return "background-color: #D1FAE5; color: #065F46"
+        if val == "Absent":
+            return "background-color: #FEE2E2; color: #991B1B"
+        return ""
+
+    styled = df.style.applymap(_style_status, subset=["Status"])
+    st.dataframe(styled, use_container_width=True, height=400)
+
+    if selected_id:
+        _render_stats(selected_id)
+
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1:
+        csv = df.to_csv(index=False)
+        st.download_button("⬇ Download CSV", csv, "attendance.csv", "text/csv",
+                           use_container_width=True)
+    with c2:
+        import io
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False, engine="openpyxl")
+        st.download_button("⬇ Download Excel", buf.getvalue(),
+                           "attendance.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
+
+
+def _render_stats(course_id: int):
+    stats = _fetch_stats(_token(), course_id)
+    if not stats:
+        return
+
+    st.subheader("📊 Course Statistics")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _kpi_card("Attendance Rate", f"{stats.get('attendance_rate', 0):.1f}%",
+                  color="#3B82F6")
+    with c2:
+        _kpi_card("Present", str(stats.get("present", 0)), color="#10B981")
+    with c3:
+        _kpi_card("Absent", str(stats.get("absent", 0)), color="#EF4444")
+    with c4:
+        _kpi_card("Unique Students", str(stats.get("unique_students", 0)), color="#8B5CF6")
+
+
+# ============================================================================
+# TEACHER pages
+# ============================================================================
+
+def _teacher_overview():
+    """
+    Teacher overview — scoped KPIs + prominent Take Attendance CTA.
+
+    All data comes from /teachers/me/summary which is scoped server-side
+    to the calling teacher's JWT. Zero-state values are always shown as 0.
+    """
+    st.header("📊 My Overview")
+
+    # --- Primary call-to-action: Take Attendance ----------------------------
+    st.markdown(
+        """
+        <div style="background:linear-gradient(135deg,#3B82F6,#1D4ED8);
+                    border-radius:14px;padding:28px 32px;color:white;margin-bottom:24px">
+            <p style="font-size:1.1rem;font-weight:600;margin:0 0 6px 0">
+                📷 Ready to take attendance?
+            </p>
+            <p style="font-size:0.9rem;margin:0;opacity:0.85">
+                View and manage today's attendance records for your courses.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("📷 Take Attendance", use_container_width=True, type="primary"):
+        # Cannot write to "sidebar_nav" after the radio widget is rendered.
+        # Write to an intermediary key instead; main() resolves it on the next run
+        # before the radio widget is instantiated.
+        st.session_state["_nav_request"] = "Attendance"
+        st.rerun()
+
+    st.markdown("---")
+
+    # --- KPI cards ---------------------------------------------------------
+    summary = _fetch_teacher_summary(_token())
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        _kpi_card("My Active Courses",
+                  str(summary.get("my_courses", 0)), color="#3B82F6")
+    with c2:
+        _kpi_card("My Students",
+                  str(summary.get("my_students", 0)), color="#10B981")
+    with c3:
+        _kpi_card("Today's Attendance",
+                  str(summary.get("today_attendance", 0)), color="#F59E0B")
+    with c4:
+        _kpi_card("This Week",
+                  str(summary.get("this_week_attendance", 0)), color="#8B5CF6")
+
+
+def _my_courses_section():
+    """Teacher: view assigned courses and enroll existing students."""
+    st.header("🎓 My Courses")
+
+    tab1, tab2 = st.tabs(["My Assigned Courses", "Enroll Student"])
+
+    with tab1:
+        courses = _fetch_my_courses(_token())
+        if courses:
+            st.dataframe(pd.DataFrame(courses), use_container_width=True)
+        else:
+            st.info("You have no courses assigned yet. Ask an admin to assign courses to you.")
+
+    with tab2:
+        courses = _fetch_my_courses(_token())
+        # Teachers enroll students into their own courses only.
+        # Student list comes from the global API (admin must have registered them).
+        ok, all_students = _api("get", "/users/")
+        if not ok:
+            # Teachers cannot call /users/ (admin-only). Surface a helpful message.
+            st.info(
+                "Student list is not available. Ask an admin to enroll students, "
+                "or use the Courses page in the admin panel."
+            )
+            return
+
+        if not courses:
+            st.warning("You have no courses to enroll students into.")
+            return
+
+        with st.form("enroll_teacher"):
+            student_map = {
+                f"{u['student_uid']} — {u['name']}": u["student_uid"]
+                for u in all_students
+            }
+            course_map = {
+                f"{c['code']} — {c['name']}": c["id"]
+                for c in courses
+            }
+            s_key = st.selectbox("Student", list(student_map) or ["<no students>"])
+            c_key = st.selectbox("Course", list(course_map))
+            if st.form_submit_button("Enroll"):
+                if not student_map:
+                    st.error("No students available.")
+                else:
+                    ok, data = _api("post", "/courses/enroll", json={
+                        "student_uid": student_map[s_key],
+                        "course_id": course_map[c_key],
+                        "teacher_account_id": st.session_state.get("account_id"),
+                    })
+                    if ok:
+                        st.success("Enrolled successfully.")
+                    else:
+                        st.error(f"Failed: {data}")
+
+
+def _my_students_section():
+    """Teacher: view distinct students enrolled across all their courses."""
+    st.header("👥 My Students")
+
+    students = _fetch_my_students(_token())
+    if not students:
+        st.info(
+            "No students are enrolled in your courses yet. "
+            "Use **My Courses → Enroll Student** to add students."
+        )
+        return
+
+    df = pd.DataFrame(students).rename(columns={
+        "student_uid": "Student ID", "name": "Name", "email": "Email"
+    })
+    st.dataframe(df, use_container_width=True, height=400)
+    st.caption(f"{len(students)} student(s) across all your courses")
+
+
+# ============================================================================
+# Main app layout
+# ============================================================================
+
+def _build_nav_pages() -> list:
+    """Return the sidebar page list appropriate to the current role."""
+    if _role() == ROLE_TEACHER:
+        return ["Overview", "Attendance", "My Courses", "My Students", "Notifications"]
+    # Admin (default)
+    return [
+        "Overview", "Attendance", "Courses",
+        "Register Student", "Register Teacher", "Notifications",
+    ]
+
 
 def main():
     if not _token():
         _login_page()
         return
+
+    nav_pages = _build_nav_pages()
 
     with st.sidebar:
         st.markdown(
@@ -418,26 +694,61 @@ def main():
             f"**Role:** {_role()}"
         )
         st.markdown("---")
+
+        # Resolve any pending navigation request BEFORE the radio widget is
+        # instantiated. Writing to "sidebar_nav" after st.radio renders it raises
+        # StreamlitAPIException — the intermediary "_nav_request" key avoids that.
+        if "_nav_request" in st.session_state:
+            requested = st.session_state.pop("_nav_request")
+            if requested in nav_pages:
+                st.session_state["sidebar_nav"] = requested
+
+        if "sidebar_nav" not in st.session_state:
+            st.session_state["sidebar_nav"] = "Overview"
+
+        # Guard: fall back to Overview if the stored page is no longer in the list.
+        if st.session_state["sidebar_nav"] not in nav_pages:
+            st.session_state["sidebar_nav"] = "Overview"
+
         page = st.radio(
             "Navigation",
-            ["Overview", "Attendance", "Courses", "Register Student", "Notifications"],
+            nav_pages,
+            key="sidebar_nav",
             label_visibility="collapsed",
         )
+
         st.markdown("---")
         if st.button("Logout"):
-            for key in ["jwt_token", "role", "username", "account_id", "student_uid"]:
-                st.session_state.pop(key, None)
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             st.cache_data.clear()
             st.rerun()
 
+    # ---- Page dispatch -------------------------------------------------------
     if page == "Overview":
-        _overview()
+        if _role() == ROLE_TEACHER:
+            _teacher_overview()
+        else:
+            _overview()
+
     elif page == "Attendance":
         _attendance_section()
+
     elif page == "Courses":
         _courses_section()
+
+    elif page == "My Courses":
+        _my_courses_section()
+
+    elif page == "My Students":
+        _my_students_section()
+
     elif page == "Register Student":
         _registration_section()
+
+    elif page == "Register Teacher":
+        _register_teacher_section()
+
     elif page == "Notifications":
         _notifications_section()
 

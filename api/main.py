@@ -24,7 +24,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routes import attendance, auth, courses, users
+from api.routes import admin, attendance, auth, courses, teachers, users
 from core.exceptions import (
     AuthenticationError,
     AuthorizationError,
@@ -142,6 +142,8 @@ async def domain_error_handler(request: Request, exc: DomainError):
 PREFIX = "/api/v1"
 
 app.include_router(auth.router, prefix=PREFIX)
+app.include_router(admin.router, prefix=PREFIX)
+app.include_router(teachers.router, prefix=PREFIX)
 app.include_router(users.router, prefix=PREFIX)
 app.include_router(courses.router, prefix=PREFIX)
 app.include_router(attendance.router, prefix=PREFIX)

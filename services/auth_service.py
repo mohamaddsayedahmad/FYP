@@ -68,10 +68,22 @@ class AuthService:
         password: str,
         role: str,
         student_uid: Optional[str] = None,
+        name: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> Account:
-        account = Account(username=username, role=role, student_uid=student_uid)
+        account = Account(
+            username=username,
+            role=role,
+            student_uid=student_uid,
+            name=name,
+            email=email,
+        )
         hashed = hash_password(password)
         return self._accounts.save(account, hashed.hash_b64, hashed.salt_b64)
+
+    def username_exists(self, username: str) -> bool:
+        """Return True if any active account (any role) already holds this username."""
+        return self._accounts.username_exists(username)
 
     def ensure_default_accounts(self) -> None:
         """

@@ -55,6 +55,9 @@ attendance_env/Scripts/python -m pytest tests/ -v
 | `infrastructure/security/password.py` | PBKDF2-SHA256, 600k iterations, legacy-compatible |
 | `api/security.py` | JWT HS256 tokens, `require_role()` dependency |
 | `api/dependencies.py` | DI container — `_make_repos()` cached with `lru_cache` |
+| `api/routes/admin.py` | `POST /admin/register-teacher` — admin-only teacher account creation |
+| `api/routes/teachers.py` | `/teachers/me/courses`, `/me/students`, `/me/summary` — teacher-scoped self-service endpoints |
+| `dashboard/streamlit_app.py` | Role-aware dashboard: admin sees global view; teacher sees "My X" scoped view |
 | `ai/face_encoder.py` | Multi-encoding registration, quality scoring, IQR outlier rejection |
 | `ai/face_recognizer.py` | N-vs-K search, confidence, margin guard, TTL cache |
 | `ai/liveness_detector.py` | EAR blink + texture + optical flow anti-spoofing |

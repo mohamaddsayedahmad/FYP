@@ -38,8 +38,8 @@ class UserSummary(BaseModel):
     "/register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Register a student with face images",
-    dependencies=[Depends(require_role("admin", "teacher"))],
+    summary="Register a student with face images (admin only)",
+    dependencies=[Depends(require_role("admin"))],
 )
 def register_student(
     body: RegisterRequest,
@@ -76,8 +76,8 @@ def register_student(
 @router.get(
     "/",
     response_model=list[UserSummary],
-    summary="List all registered students",
-    dependencies=[Depends(require_role("admin", "teacher"))],
+    summary="List all registered students (admin only)",
+    dependencies=[Depends(require_role("admin"))],
 )
 def list_users(
     reg_svc: RegistrationService = Depends(get_registration_service),

@@ -158,6 +158,9 @@ class IAccountRepository(ABC):
     def set_active(self, username: str, role: str, is_active: bool) -> None: ...
 
     @abstractmethod
+    def username_exists(self, username: str) -> bool: ...
+
+    @abstractmethod
     def get_active_by_role(self, role: str) -> List[Account]: ...
 
 

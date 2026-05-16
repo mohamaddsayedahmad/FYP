@@ -74,3 +74,11 @@ class CourseService:
             {"student_uid": s.student_uid, "name": s.name, "email": s.email}
             for s in students
         ]
+
+    def get_all_students_for_teacher(self, teacher_account_id: int) -> List[Dict]:
+        """Return distinct students enrolled across all courses assigned to a teacher."""
+        students = self._enrollments.get_students_for_teacher(teacher_account_id)
+        return [
+            {"student_uid": s.student_uid, "name": s.name, "email": s.email}
+            for s in students
+        ]

@@ -91,6 +91,8 @@ class Account:
     is_active: bool = True
     id: Optional[int] = None
     student_uid: Optional[str] = None  # only for role='student'
+    name: Optional[str] = None         # display name (teacher/admin profiles)
+    email: Optional[str] = None        # contact email (teacher/admin profiles)
     created_at: Optional[datetime] = None
 
     VALID_ROLES = frozenset({"admin", "teacher", "student"})

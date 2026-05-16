@@ -14,12 +14,15 @@ from infrastructure.database.connection import get_connection
 
 
 def _row_to_account(row: sqlite3.Row) -> Account:
+    keys = row.keys()
     return Account(
         id=row["id"],
         username=row["username"],
         role=row["role"],
         is_active=bool(row["is_active"]),
         student_uid=row["student_uid"],
+        name=row["name"] if "name" in keys else None,
+        email=row["email"] if "email" in keys else None,
         created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else None,
     )
 
@@ -30,7 +33,7 @@ class SQLiteAccountRepository(IAccountRepository):
         with get_connection() as conn:
             cur = conn.execute(
                 """
-                SELECT id, username, role, is_active, student_uid, created_at
+                SELECT id, username, role, is_active, student_uid, name, email, created_at
                 FROM accounts
                 WHERE username = ? AND role = ? AND is_active = 1
                 LIMIT 1;
@@ -44,7 +47,7 @@ class SQLiteAccountRepository(IAccountRepository):
         with get_connection() as conn:
             cur = conn.execute(
                 """
-                SELECT id, username, role, is_active, student_uid, created_at
+                SELECT id, username, role, is_active, student_uid, name, email, created_at
                 FROM accounts WHERE id = ? LIMIT 1;
                 """,
                 (account_id,),
@@ -58,21 +61,23 @@ class SQLiteAccountRepository(IAccountRepository):
             conn.execute(
                 """
                 INSERT INTO accounts(username, password_hash, salt, iterations, role,
-                                     student_uid, created_at, is_active)
-                VALUES (?, ?, ?, 600000, ?, ?, ?, 1)
+                                     student_uid, name, email, created_at, is_active)
+                VALUES (?, ?, ?, 600000, ?, ?, ?, ?, ?, 1)
                 ON CONFLICT(username) DO UPDATE SET
                     password_hash = excluded.password_hash,
                     salt          = excluded.salt,
                     iterations    = excluded.iterations,
                     role          = excluded.role,
                     student_uid   = excluded.student_uid,
+                    name          = excluded.name,
+                    email         = excluded.email,
                     is_active     = 1;
                 """,
                 (account.username, password_hash, salt, account.role,
-                 account.student_uid, now),
+                 account.student_uid, account.name, account.email, now),
             )
             cur = conn.execute(
-                "SELECT id, username, role, is_active, student_uid, created_at "
+                "SELECT id, username, role, is_active, student_uid, name, email, created_at "
                 "FROM accounts WHERE username = ? LIMIT 1;",
                 (account.username,),
             )
@@ -92,6 +97,14 @@ class SQLiteAccountRepository(IAccountRepository):
         iterations = int(row["iterations"]) if row["iterations"] else 200_000
         return row["password_hash"], row["salt"], iterations
 
+    def username_exists(self, username: str) -> bool:
+        with get_connection() as conn:
+            cur = conn.execute(
+                "SELECT 1 FROM accounts WHERE username = ? LIMIT 1;",
+                (username,),
+            )
+            return cur.fetchone() is not None
+
     def set_active(self, username: str, role: str, is_active: bool) -> None:
         with get_connection() as conn:
             conn.execute(
@@ -103,7 +116,7 @@ class SQLiteAccountRepository(IAccountRepository):
         with get_connection() as conn:
             cur = conn.execute(
                 """
-                SELECT id, username, role, is_active, student_uid, created_at
+                SELECT id, username, role, is_active, student_uid, name, email, created_at
                 FROM accounts
                 WHERE role = ? AND is_active = 1
                 ORDER BY username ASC;
