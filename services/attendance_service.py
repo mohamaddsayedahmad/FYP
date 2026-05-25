@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
-from core.entities import AttendanceRecord, Student
-from core.exceptions import AttendanceError, NotFoundError
+from core.entities import AttendanceRecord
+from core.exceptions import NotFoundError
 from core.interfaces import (
     IAttendanceRepository,
     ICourseRepository,

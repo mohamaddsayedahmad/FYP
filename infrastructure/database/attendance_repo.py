@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date, datetime, time
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from core.entities import AttendanceRecord
 from core.interfaces import IAttendanceRepository
@@ -229,7 +229,7 @@ class SQLiteAttendanceRepository(IAttendanceRepository):
         teacher_account_id: Optional[int] = None,
     ) -> List[Dict]:
         where = ["e.course_id = ?"]
-        params: list = [int(course_id)]
+        params: List[Any] = [int(course_id)]
 
         if teacher_account_id is not None:
             where.append("e.teacher_account_id = ?")

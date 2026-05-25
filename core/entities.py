@@ -7,7 +7,7 @@ All fields use value types; no ORM or database coupling here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, time
 from typing import Optional
 

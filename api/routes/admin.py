@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.dependencies import get_auth_service, get_course_service
 from api.security import require_role
 from core.exceptions import NotFoundError
+from infrastructure.security.password import validate_password_strength
 from services.auth_service import AuthService
 from services.course_service import CourseService
 
@@ -28,6 +29,12 @@ class RegisterTeacherRequest(BaseModel):
         default=[],
         description="Course IDs to assign to this teacher immediately on registration",
     )
+
+    @field_validator("password")
+    @classmethod
+    def password_complexity(cls, v: str) -> str:
+        validate_password_strength(v)
+        return v
 
 
 class RegisterTeacherResponse(BaseModel):

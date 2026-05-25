@@ -63,6 +63,17 @@ def needs_rehash(stored: HashedPassword) -> bool:
     return (stored.iterations or _ITERATIONS_LEGACY) < _ITERATIONS_NEW
 
 
+def validate_password_strength(password: str) -> None:
+    """
+    Enforce minimum complexity: at least one letter and one digit.
+    Raises ValueError so Pydantic field validators can surface it as HTTP 422.
+    """
+    if not any(c.isalpha() for c in password):
+        raise ValueError("password must contain at least one letter")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("password must contain at least one digit")
+
+
 def _legacy_decode(s: str) -> bytes:
     """
     The original database.py stored bytes as either hex or Base64.

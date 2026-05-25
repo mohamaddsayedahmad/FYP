@@ -51,7 +51,7 @@ services:
       - ATTENDANCE_CORS_ORIGINS=http://localhost:8501,http://dashboard:8501
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -111,3 +111,38 @@ class TestDefaultAccounts:
         # Original strong password must still work
         account = auth_service.authenticate("admin", "my-strong-password", "admin")
         assert account is not None
+
+
+class TestPasswordRehash:
+
+    def test_authenticate_rehashes_legacy_iteration_count(self, auth_service, account_repo):
+        import base64
+        import hashlib
+        import secrets as _secrets
+
+        auth_service.create_account("rehash_user", "placeholder", "teacher")
+        account = account_repo.get_by_username_and_role("rehash_user", "teacher")
+
+        # Overwrite with a proper 200k-iteration hash so verify_password succeeds
+        password = "rehash_pw1"
+        salt = _secrets.token_bytes(32)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200_000)
+        hash_b64 = base64.b64encode(digest).decode()
+        salt_b64 = base64.b64encode(salt).decode()
+
+        from infrastructure.database.connection import get_connection
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE accounts SET password_hash=?, salt=?, iterations=200000 "
+                "WHERE username=?",
+                (hash_b64, salt_b64, "rehash_user"),
+            )
+
+        creds_before = account_repo.get_credentials(account.id)
+        assert creds_before[2] == 200_000
+
+        # Authenticate → triggers transparent rehash to 600k
+        auth_service.authenticate("rehash_user", password, "teacher")
+
+        creds_after = account_repo.get_credentials(account.id)
+        assert creds_after[2] == 600_000

@@ -84,7 +84,7 @@ class SQLiteAccountRepository(IAccountRepository):
             row = cur.fetchone()
         return _row_to_account(row)
 
-    def get_credentials(self, account_id: int) -> Optional[Tuple[str, str]]:
+    def get_credentials(self, account_id: int) -> Optional[Tuple[str, str, int]]:
         """Return (password_hash_b64, salt_b64) for the given account id."""
         with get_connection() as conn:
             cur = conn.execute(

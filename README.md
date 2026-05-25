@@ -2,7 +2,7 @@
 
 **Author:** Mohamad Ali Sayed Ahmad · Computer Science Final Year Project  
 **Stack:** Python 3.11 · FastAPI · SQLite · OpenCV · dlib/face_recognition · Streamlit · Tkinter  
-**Tests:** 57 passing · Architecture: Clean Architecture (Domain → Infrastructure → Services → API)
+**Tests:** 127 passing · Architecture: Clean Architecture (Domain → Infrastructure → Services → API)
 
 ---
 
@@ -154,6 +154,8 @@ print(report.summary_table())
 | RBAC | admin / teacher / student roles, enforced per endpoint via FastAPI `Depends` |
 | Timing attacks | `hmac.compare_digest()` for all password comparisons |
 | Password upgrade | Transparent PBKDF2 rehash on login when iteration count < 600,000 |
+| Password policy | Minimum 8 chars, at least one letter and one digit (enforced at API layer) |
+| Rate limiting | Login endpoint capped at 5 req/min per IP via slowapi |
 | SQL injection | 100% parameterised queries throughout |
 | CORS | Restrictive allowlist from env var, no wildcard `*` |
 
@@ -288,7 +290,8 @@ Authorization: Bearer <access_token>
 
 | Method | Endpoint | Role | Description |
 |--------|----------|------|-------------|
-| `POST` | `/api/v1/auth/login` | Public | Obtain JWT token |
+| `GET` | `/health` | Public | DB health probe — returns 200 ok or 503 degraded |
+| `POST` | `/api/v1/auth/login` | Public | Obtain JWT token (rate-limited: 5/min per IP) |
 | `GET` | `/api/v1/users/` | admin, teacher | List all students |
 | `POST` | `/api/v1/users/register` | admin, teacher | Register student with face images |
 | `GET` | `/api/v1/courses/` | all | List courses |
@@ -339,11 +342,14 @@ AttendanceSystem/
 │   └── notification_service.py
 │
 ├── api/                     # FastAPI transport layer
-│   ├── main.py              # App factory, middleware, exception handlers
+│   ├── main.py              # App factory, middleware, exception handlers, /health
 │   ├── security.py          # JWT creation and verification
+│   ├── limiter.py           # slowapi rate-limiter instance and reset helper
 │   ├── dependencies.py      # Dependency injection container
 │   └── routes/
-│       ├── auth.py
+│       ├── auth.py          # POST /login (rate-limited)
+│       ├── admin.py         # POST /admin/register-teacher (admin only)
+│       ├── teachers.py      # GET /teachers/me/* (teacher-scoped)
 │       ├── users.py
 │       ├── courses.py
 │       └── attendance.py
@@ -359,9 +365,16 @@ AttendanceSystem/
 │   └── streamlit_app.py     # Analytics dashboard with JWT auth
 │
 ├── tests/
-│   ├── conftest.py          # Isolated per-test SQLite DB, env patching
+│   ├── conftest.py          # Isolated per-test SQLite DB, env patching, rate-limit reset
 │   └── unit/
 │       ├── test_auth_service.py
+│       ├── test_attendance_service.py
+│       ├── test_course_service.py
+│       ├── test_notification_service.py
+│       ├── test_registration_service.py
+│       ├── test_teacher_api.py
+│       ├── test_admin_api.py
+│       ├── test_health_api.py
 │       ├── test_entities.py
 │       ├── test_face_encoder.py
 │       ├── test_metrics.py
@@ -396,12 +409,19 @@ python -m pytest tests/unit/test_auth_service.py -v
 python -m pytest tests/ --cov=. --cov-report=term-missing
 ```
 
-**Current test results: 57 passed, 0 failed**
+**Current test results: 127 passed, 0 failed · Services coverage: 92%**
 
 Test suites:
 - `test_entities.py` — domain invariants (pure Python, zero I/O)
 - `test_password.py` — PBKDF2 correctness, timing safety, legacy format compatibility
-- `test_auth_service.py` — authentication, RBAC, default accounts, rehash
+- `test_auth_service.py` — authentication, RBAC, default accounts, transparent rehash
+- `test_attendance_service.py` — sign-in/out, finalize session, face data loading, statistics
+- `test_course_service.py` — enrollment, course assignment, enrolled-student queries
+- `test_notification_service.py` — absent notifications, deduplication, SMTP log-only mode
+- `test_registration_service.py` — validation, face_recognition mocking, multi-image handling
+- `test_admin_api.py` — POST /admin/register-teacher, password policy enforcement
+- `test_teacher_api.py` — teacher-scoped /me endpoints, data isolation between teachers
+- `test_health_api.py` — GET /health happy path and DB-failure 503 path
 - `test_face_encoder.py` — quality scoring, outlier rejection, encryption round-trips
 - `test_metrics.py` — accuracy metrics, d-prime, EER calculation
 
@@ -424,6 +444,7 @@ All configuration is via environment variables. See `.env.example` for the full 
 | `ATTENDANCE_SMTP_USER` | No | — | SMTP username |
 | `ATTENDANCE_SMTP_PASS` | No | — | SMTP password |
 | `ATTENDANCE_CORS_ORIGINS` | No | `http://localhost:3000,...` | Comma-separated CORS origins |
+| `ATTENDANCE_LOGIN_RATE_LIMIT` | No | `5/minute` | Override login rate limit (e.g. `100/minute` for testing) |
 
 ---
 

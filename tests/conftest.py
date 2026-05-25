@@ -42,6 +42,7 @@ def tmp_db_path(tmp_path) -> Path:
     os.environ["ATTENDANCE_DB_PATH"] = str(db)
     os.environ["ATTENDANCE_FERNET_KEY"] = TEST_FERNET_KEY.decode()
     os.environ["ATTENDANCE_JWT_SECRET"] = "test-secret-do-not-use-in-production"
+    os.environ["ATTENDANCE_LOGIN_RATE_LIMIT"] = "10000/minute"  # effectively off in tests
 
     from infrastructure.database.migrator import run_migrations
     run_migrations()
@@ -57,6 +58,7 @@ def patch_env(monkeypatch, tmp_db_path):
     monkeypatch.setenv("ATTENDANCE_DB_PATH", str(tmp_db_path))
     monkeypatch.setenv("ATTENDANCE_FERNET_KEY", TEST_FERNET_KEY.decode())
     monkeypatch.setenv("ATTENDANCE_JWT_SECRET", "test-secret-do-not-use-in-production")
+    monkeypatch.setenv("ATTENDANCE_LOGIN_RATE_LIMIT", "10000/minute")
 
     # Reset singletons so they re-read the patched env vars on next access.
     import infrastructure.security.encryption as enc_mod
@@ -65,6 +67,13 @@ def patch_env(monkeypatch, tmp_db_path):
     try:
         import api.dependencies as dep_mod
         dep_mod._make_repos.cache_clear()
+    except Exception:
+        pass
+
+    # Reset in-memory rate-limit counters so previous tests don't affect limits.
+    try:
+        from api.limiter import reset_limiter
+        reset_limiter()
     except Exception:
         pass
 

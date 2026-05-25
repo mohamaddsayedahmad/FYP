@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Optional
 
 from core.entities import Account
-from core.exceptions import AuthenticationError, NotFoundError
+from core.exceptions import AuthenticationError
 from core.interfaces import IAccountRepository
 from infrastructure.security.password import (
     HashedPassword,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from core.entities import Course, Enrollment
-from core.exceptions import AlreadyExistsError, NotFoundError
+from core.exceptions import NotFoundError
 from core.interfaces import ICourseRepository, IEnrollmentRepository, IStudentRepository
 
 

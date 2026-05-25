@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_auth_service
+from api.limiter import limiter, _login_limit
 from api.security import create_access_token
 from core.exceptions import AuthenticationError
 from services.auth_service import AuthService
@@ -29,7 +30,9 @@ class TokenResponse(BaseModel):
 
 
 @router.post("/login", response_model=TokenResponse, summary="Obtain a JWT access token")
+@limiter.limit(_login_limit)
 def login(
+    request: Request,
     body: LoginRequest,
     auth_svc: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:

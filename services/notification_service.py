@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from core.entities import EmailNotification
 from core.interfaces import (

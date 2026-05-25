@@ -21,7 +21,6 @@ for zero-downtime rotation.
 
 from __future__ import annotations
 
-import base64
 import os
 from typing import Optional
 
@@ -61,7 +60,7 @@ def _load_or_generate_key() -> bytes:
         try:
             Fernet(key)
             return key
-        except Exception:
+        except Exception:  # nosec B110 — if legacy key file is unreadable/corrupt, fall through to generate a new one
             pass
 
     # Generate and persist to legacy file for backward compatibility

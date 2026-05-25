@@ -66,12 +66,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --shell /bin/bash attendance
 WORKDIR /app
 
-# Install from pre-built wheels (no compiler needed)
+# Install from pre-built wheels (no compiler needed).
+# Uses opencv-python-headless (no display server in container).
+# Test-only deps (pytest, httpx, etc.) are intentionally omitted.
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels \
-        fastapi uvicorn pydantic PyJWT cryptography \
+        fastapi uvicorn pydantic PyJWT cryptography slowapi \
         numpy face-recognition opencv-python-headless \
-        pandas openpyxl streamlit requests flask \
+        pandas openpyxl Pillow streamlit requests flask ttkbootstrap \
     && rm -rf /wheels
 
 # Copy application source (respect .dockerignore)
@@ -82,9 +84,9 @@ USER attendance
 # FastAPI runs on 8000; Streamlit on 8501
 EXPOSE 8000 8501
 
-# Health check — pings the FastAPI health endpoint
+# Health check — probes the /health endpoint which runs a DB connectivity check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" \
     || exit 1
 
 # Default command: FastAPI via uvicorn
